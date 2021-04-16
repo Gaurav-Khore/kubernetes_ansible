@@ -1,0 +1,72 @@
+---
+# tasks file for kube_slave
+- name: Install docker
+  package:
+          name: docker
+          state: present
+- name: Start the docker service
+  service:
+          name: docker
+          state: started
+          enabled: yes
+  register: x
+- command: "rpm --import https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg"
+- file:
+        path: /etc/yum.repos.d/kubernetes.repo
+        state: touch
+- name: Creating the repo
+  blockinfile:
+          path: /etc/yum.repos.d/kubernetes.repo
+          block: |
+                  [kube]
+                  enabled=1
+                  autorefresh=1
+                  baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+                  gpgcheck=1
+                  gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg
+                         https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+                         https://packages.cloud.google.com/yum/doc/apt-key.gpg
+- name: installing the kubeadm
+  shell:
+          cmd: "yum install -y kubeadm"
+  when: x.changed == true
+- name: starting the kubelet service
+  service:
+          name: kubelet
+          state: started
+          enabled: yes
+  register: y
+- file:
+        path: /etc/docker/daemon.json
+        state: touch
+- name: changing the cgroup
+  blockinfile:
+          path: /etc/docker/daemon.json
+          marker: " "
+          marker_begin: " "
+          marker_end: " "
+          block: |
+                  {
+                          "exec-opts": ["native.cgroupdriver=systemd"]
+                          }
+  register: z
+  when: y.changed==true
+- name: restarting the docker
+  service:
+          name: docker
+          state: restarted
+  when: z.changed==true
+- name: installing iproute-tc
+  package:
+          name: iproute-tc
+          state: present
+  register: i
+- shell:
+        cmd: "echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables"
+- shell:
+        cmd: " cat /root/ans_token.txt"
+  register: token
+  delegate_to: localhost
+- shell:
+        cmd: "{{ token.stdout }}"
+

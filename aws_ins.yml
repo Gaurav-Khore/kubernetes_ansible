@@ -1,0 +1,70 @@
+- hosts: localhost
+  tasks:
+          - name: creating the security group
+            ec2_group:
+                    name: sg_ans
+                    description: sg for instance using ansible
+                    vpc_id: vpc-aef7eac6
+                    region: ap-south-1
+                    rules:
+                            - proto: all
+                              cidr_ip: 0.0.0.0/0
+          - name: launching the aws instance
+            ec2:
+                    key_name: ansible_key
+                    instance_type: t2.micro
+                    image: ami-0bcf5425cdc1d8a85
+                    group: sg_ans
+                    wait: yes
+                    vpc_subnet_id: subnet-78003a10
+                    assign_public_ip: yes
+                    region: ap-south-1
+                    count_tag:
+                            Name: master
+            register: master
+          - name: print the instance info
+            debug:
+                    msg: "{{ master['instances'][0]['public_ip'] }}"
+          - name: launching the aws instance
+            ec2:
+                    key_name: ansible_key
+                    instance_type: t2.micro
+                    image: ami-0bcf5425cdc1d8a85
+                    group: sg_ans
+                    wait: yes
+                    vpc_subnet_id: subnet-78003a10
+                    assign_public_ip: yes
+                    region: ap-south-1
+                    count_tag:
+                            Name: Slave1
+            register: slave1
+          - name: print the instance info
+            debug:
+                    msg: "{{ slave1['instances'][0]['public_ip'] }}"
+
+          - name: launching the aws instance
+            ec2:
+                    key_name: ansible_key
+                    instance_type: t2.micro
+                    image: ami-0bcf5425cdc1d8a85
+                    group: sg_ans
+                    wait: yes
+                    vpc_subnet_id: subnet-78003a10
+                    assign_public_ip: yes
+                    region: ap-south-1
+                    count_tag:
+                            Name: Slave2
+            register: slave2
+          - name: print the instance info
+            debug:
+                    msg: "{{ slave2['instances'][0]['public_ip'] }}"
+
+          - name: configuring the inventory file
+            blockinfile:
+                    path: /root/ansible_ws/ip.txt
+                    block: |
+                            [master]
+                            {{ master['instances'][0]['public_ip'] }} ansible_user=ec2-user ansible_ssh_private_key_file=/root/ansible_ws/ans_tas_14.3/key/ansible_key.pem ansible_connection=ssh
+                            [slave]
+                            {{ slave1['instances'][0]['public_ip'] }} ansible_user=ec2-user ansible_ssh_private_key_file=/root/ansible_ws/ans_tas_14.3/key/ansible_key.pem ansible_connection=ssh
+                            {{ slave2['instances'][0]['public_ip'] }} ansible_user=ec2-user ansible_ssh_private_key_file=/root/ansible_ws/ans_tas_14.3/key/ansible_key.pem ansible_connection=ssh

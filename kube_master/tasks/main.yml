@@ -1,0 +1,93 @@
+---
+# tasks file for kube_master
+- name: Install docker
+  package:
+          name: docker
+          state: present
+- name: Start the docker service
+  service:
+          name: docker
+          state: started
+          enabled: yes
+  register: x
+- command: "rpm --import https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg"
+- file:
+        path: /etc/yum.repos.d/kubernetes.repo
+        state: touch
+- name: Creating the repo
+  blockinfile:
+          path: /etc/yum.repos.d/kubernetes.repo
+          block: |
+                  [kube]
+                  enabled=1
+                  autorefresh=1
+                  baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+                  gpgcheck=1
+                  gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg
+                         https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+                         https://packages.cloud.google.com/yum/doc/apt-key.gpg
+- name: installing the kubeadm
+  shell:
+          cmd: "yum install -y kubeadm"
+  when: x.changed == true
+- name: starting the kubeadm service
+  service:
+          name: kubelet
+          state: started
+          enabled: yes
+  register: y
+- name: pulling docker images
+  shell:
+          cmd: "kubeadm config images pull"
+  when: y.changed==true
+- file:
+        path: /etc/docker/daemon.json
+        state: touch
+- name: changing the cgroup
+  blockinfile:
+          path: /etc/docker/daemon.json
+          marker: " "
+          marker_begin: " "
+          marker_end: " "
+          block: |
+                  {
+                          "exec-opts": ["native.cgroupdriver=systemd"]
+                          }
+  register: z
+- name: restarting the docker
+  service:
+          name: docker
+          state: restarted
+  when: z.changed==true
+- name: installing iproute-tc
+  package:
+          name: iproute-tc
+          state: present
+  register: i
+- name: starting the kubernetes master
+  shell:
+          cmd: "kubeadm init --pod-network-cidr=10.240.0.0/16 --ignore-preflight-errors=NumCPU --ignore-preflight-errors=Mem"
+  when: i.changed==true
+  register: f
+- name: configuring master as node
+  shell:
+          cmd: "{{ item }}"
+  loop:
+          - mkdir -p $HOME/.kube
+          - cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+          - chown $(id -u):$(id -g) $HOME/.kube/config
+  when: f.changed==true
+- name: installing the flannel
+  shell:
+          cmd: "kubectl apply  -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml"
+- name: token
+  command: "kubeadm token create  --print-join-command"
+  register: token
+- copy:
+        content: "{{ token.stdout }}"
+        dest: /root/ans_token.txt
+  delegate_to: localhost
+- debug:
+        var: token.stdout
+
+
